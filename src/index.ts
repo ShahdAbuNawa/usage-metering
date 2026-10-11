@@ -1,12 +1,17 @@
 import express from "express";
 import { sql } from "drizzle-orm";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
 
 import { config } from "./config.js";
 import { db } from "./db/index.js";
+import { seedPredefinedPlans } from "./db/seed.js";
+import { accountsRouter } from "./routes/accounts.js";
+await migrate(db, { migrationsFolder: "./src/db/migrations" });
+await seedPredefinedPlans();
 
 const app = express();
 app.use(express.json());
-
+app.use("/accounts", accountsRouter);
 app.get("/healthz", async (req, res) => {
   await db.execute(sql`select 1`);
   res.status(200).json({ status: "ok" });
