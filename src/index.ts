@@ -6,6 +6,7 @@ import { meRouter } from "./routes/me.js";
 import { config } from "./config.js";
 import { db } from "./db/index.js";
 import { seedPredefinedPlans } from "./db/seed.js";
+import { usersRouter } from "./routes/users.js";
 import { accountsRouter } from "./routes/accounts.js";
 await migrate(db, { migrationsFolder: "./src/db/migrations" });
 await seedPredefinedPlans();
@@ -14,6 +15,7 @@ const app = express();
 app.use(express.json());
 app.use("/accounts", accountsRouter);
 app.use("/me", requireApiKey, meRouter);
+app.use("/users", requireApiKey, usersRouter);
 app.get("/healthz", async (req, res) => {
   await db.execute(sql`select 1`);
   res.status(200).json({ status: "ok" });
