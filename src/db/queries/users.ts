@@ -25,3 +25,16 @@ export async function getUserByExternalId(
     .where(and(eq(users.accountId, accountId), eq(users.externalId, externalId)));
   return result;
 }
+
+export async function updateUserPlan(
+  accountId: string,
+  externalId: string,
+  planId: string,
+) {
+  const [result] = await db
+    .update(users)
+    .set({ planId })
+    .where(and(eq(users.accountId, accountId), eq(users.externalId, externalId)))
+    .returning();
+  return result;
+}
