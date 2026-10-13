@@ -13,8 +13,17 @@ usageRouter.get("/", async (req, res) => {
   const account: Account = res.locals.account;
 
   // Identify the current month in UTC.
-  const period = new Date().toISOString().slice(0, 7);
+const period = req.query.period ?? new Date().toISOString().slice(0, 7);
 
+if (
+  typeof period !== "string" ||
+  !/^\d{4}-(0[1-9]|1[0-2])$/.test(period)
+) {
+  res.status(400).json({
+    error: "period must be YYYY-MM",
+  });
+  return;
+}
   // Find the account's current plan.
   const [plan] = await db
     .select()
@@ -72,8 +81,17 @@ usageRouter.get("/users/:externalId", async (req, res) => {
     return;
   }
 
-  const period = new Date().toISOString().slice(0, 7);
+const period = req.query.period ?? new Date().toISOString().slice(0, 7);
 
+if (
+  typeof period !== "string" ||
+  !/^\d{4}-(0[1-9]|1[0-2])$/.test(period)
+) {
+  res.status(400).json({
+    error: "period must be YYYY-MM",
+  });
+  return;
+}
   // Retrieve the user's current plan.
   const [plan] = await db
     .select()
