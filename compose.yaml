@@ -1,0 +1,50 @@
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: metering
+      POSTGRES_PASSWORD: ${METERING_DB_PASSWORD:-local_demo_only}
+      POSTGRES_DB: metering
+    volumes:
+      - metering_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metering -d metering"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    image: usage-metering:local
+    environment:
+      PORT: "8080"
+      DB_URL: postgres://metering:${METERING_DB_PASSWORD:-local_demo_only}@db:5432/metering
+    ports:
+      - "8082:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  client:
+    image: usage-metering:local
+    command: ["node", "dist/example/client.js"]
+    environment:
+      METERING_BASE_URL: http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  metering_data:
