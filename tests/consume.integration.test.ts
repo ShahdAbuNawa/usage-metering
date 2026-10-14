@@ -1,7 +1,7 @@
 
 import { describe, expect, it } from "vitest";
 
-const BASE_URL = "http://localhost:8080";
+const BASE_URL = "http://localhost:8081";
 
 describe("Consumption API integration", () => {
     it("consumes units only once when a request is retried", async () => {
