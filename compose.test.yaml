@@ -1,0 +1,46 @@
+name: usage-metering-tests
+
+services:
+  test-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: metering
+      POSTGRES_PASSWORD: local_test_only
+      POSTGRES_DB: metering_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metering -d metering_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  test-api:
+    build: .
+    environment:
+      PORT: "8080"
+      DB_URL: postgres://metering:local_test_only@test-db:5432/metering_test
+    depends_on:
+      test-db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  tests:
+    build:
+      context: .
+      target: test
+    environment:
+      METERING_BASE_URL: http://test-api:8080
+    depends_on:
+      test-api:
+        condition: service_healthy
+    command: ["npm", "test"]

@@ -243,11 +243,32 @@ The project uses Vitest and currently includes:
 - Five unit tests for quota rules.
 - Six integration tests covering consumption, retries, rejection, authentication, account isolation, plan reductions, and concurrency.
 
-Run the tests with:
+### Run automated tests with Docker (recommended)
 
-`npm test`
+Run:
 
-**Current test setup:** Integration tests require a separately running test API on port 8081, connected to the `metering_test` PostgreSQL database with initialized schema and predefined plans. They do not currently start the test server automatically or clean up created accounts.
+docker compose -f compose.test.yaml up --build --abort-on-container-exit --exit-code-from tests
+
+This automatically starts:
+- A temporary PostgreSQL test database
+- The test API
+- All 11 automated tests
+
+No manual database or test server setup is required.
+
+After testing, clean up with:
+
+docker compose -f compose.test.yaml down
+
+### Run tests locally
+
+npm test
+
+Local integration tests require a running test API connected
+to a separate test database. By default, the API address
+is http://localhost:8081.
+
+You can override it using the METERING_BASE_URL environment variable.
 
 ## 11. Performance Testing
 

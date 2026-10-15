@@ -13,6 +13,12 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
+# Test stage: Run automated tests
+FROM build AS test
+
+COPY tests ./tests
+
+CMD ["npm", "test"]
 
 # Stage 2: Run the compiled application
 FROM node:22-alpine
