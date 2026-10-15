@@ -1,4 +1,15 @@
-node_modules
-dist
+
+# Dependencies and compiled files
+node_modules/
+dist/
+coverage/
+
+# Environment variables and secrets
 .env
+.env.*
+!.env.example
+
+# Temporary files
 *.swp
+*.log
+.DS_Store
