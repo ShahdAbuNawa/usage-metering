@@ -552,5 +552,173 @@ describe("Consumption API integration", () => {
             unitsRemaining: 900,
         });
     }, 15000);
+it("prevents accounts from accessing each other's custom plans", async () => {
+  async function createTestAccount(name: string) {
+    const response = await fetch(`${BASE_URL}/accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
 
+    expect(response.status).toBe(201);
+    return (await response.json()) as { apiKey: string };
+  }
+
+  const accountA = await createTestAccount("Plan Owner A");
+  const accountB = await createTestAccount("Other Account B");
+
+  const headersA = {
+    "Content-Type": "application/json",
+    "X-API-Key": accountA.apiKey,
+  };
+
+  const headersB = {
+    "Content-Type": "application/json",
+    "X-API-Key": accountB.apiKey,
+  };
+
+  // Account A creates its own custom user plan.
+  const planResponse = await fetch(`${BASE_URL}/plans`, {
+    method: "POST",
+    headers: headersA,
+    body: JSON.stringify({
+      name: "Private Plan",
+      kind: "user",
+      monthlyAllowance: 100,
+      maxPerRequest: 10,
+    }),
+  });
+
+  expect(planResponse.status).toBe(201);
+  const { id: planId } = (await planResponse.json()) as {
+    id: string;
+  };
+
+  // Account B must not view Account A's plan.
+  const viewResponse = await fetch(`${BASE_URL}/plans/${planId}`, {
+    headers: headersB,
+  });
+  expect(viewResponse.status).toBe(404);
+
+  // Account B must not modify Account A's plan.
+  const updateResponse = await fetch(`${BASE_URL}/plans/${planId}`, {
+    method: "PUT",
+    headers: headersB,
+    body: JSON.stringify({ monthlyAllowance: 500 }),
+  });
+  expect(updateResponse.status).toBe(404);
+
+  // Account B must not assign Account A's plan to a user.
+  const assignResponse = await fetch(`${BASE_URL}/users`, {
+    method: "POST",
+    headers: headersB,
+    body: JSON.stringify({
+      externalId: "unauthorized-user",
+      planId,
+    }),
+  });
+  expect(assignResponse.status).toBe(404);
+});
+it("returns request history with pagination", async () => {
+  // Create a test account.
+  const accountResponse = await fetch(`${BASE_URL}/accounts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "History Test Account" }),
+  });
+
+  expect(accountResponse.status).toBe(201);
+  const { apiKey } = (await accountResponse.json()) as {
+    apiKey: string;
+  };
+
+  const headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": apiKey,
+  };
+
+  // Create a user.
+  const userResponse = await fetch(`${BASE_URL}/users`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ externalId: "history-user" }),
+  });
+  expect(userResponse.status).toBe(201);
+
+  // One accepted request and one rejected request.
+  for (const request of [
+    { requestId: "history-accepted", units: 5 },
+    { requestId: "history-rejected", units: 21 },
+  ]) {
+    const response = await fetch(`${BASE_URL}/consume`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        externalId: "history-user",
+        ...request,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+  }
+
+  // Get the first page (one record).
+  const firstResponse = await fetch(
+    `${BASE_URL}/requests?limit=1&offset=0`,
+    { headers },
+  );
+
+  expect(firstResponse.status).toBe(200);
+  const first = await firstResponse.json();
+
+  expect(first.items).toHaveLength(1);
+  expect(first.pagination).toMatchObject({
+    hasMore: true,
+    nextOffset: 1,
+  });
+
+  // Get the second page.
+  const secondResponse = await fetch(
+    `${BASE_URL}/requests?limit=1&offset=1`,
+    { headers },
+  );
+
+  expect(secondResponse.status).toBe(200);
+  const second = await secondResponse.json();
+
+  expect(second.items).toHaveLength(1);
+  expect(second.pagination).toMatchObject({
+    hasMore: false,
+    nextOffset: null,
+  });
+
+  // Verify both decisions were saved.
+  const records = [...first.items, ...second.items];
+
+  expect(records).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        requestId: "history-accepted",
+        accepted: true,
+        units: 5,
+      }),
+      expect.objectContaining({
+        requestId: "history-rejected",
+        accepted: false,
+        rejectedScope: "user",
+        rejectedRule: "max_per_request",
+      }),
+    ]),
+  );
+
+  // The rejected request must not increase usage.
+  const usageResponse = await fetch(`${BASE_URL}/usage`, {
+    headers,
+  });
+
+  expect(usageResponse.status).toBe(200);
+  expect(await usageResponse.json()).toMatchObject({
+    unitsUsed: 5,
+  });
+});
 });
