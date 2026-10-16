@@ -60,6 +60,10 @@ The example client runs automatically and prints consumption decisions and remai
 
 To stop the services, press Ctrl+C.
 
+PostgreSQL data is stored in a named Docker volume. Restarting the
+containers preserves accounts, plans, and usage records. Avoid
+`docker compose down -v` unless you intend to delete the stored data.
+
 **Security note:** The Docker Compose configuration uses a demonstration database password by default. It is intended for local development only.
 
 ## 4. Predefined Plans
@@ -296,7 +300,7 @@ See `docs/performance-results.md` for measured results, reproduction instruction
 - New calendar months start with zero usage without deleting previous records.
 - Existing usage is preserved when plans change.
 - API key rotation, rate limiting, and production infrastructure are not implemented.
-- The current integration-test environment requires manual setup.
+- Running integration tests locally without Docker requires a separate test API and database. The Docker test setup is fully automated.
 - The supplied Docker configuration is intended for local demonstration.
 
 The project focuses on correctness, reliable quota enforcement, and clear technical decisions rather than billing, payments, or distributed infrastructure.
