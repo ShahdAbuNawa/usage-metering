@@ -241,7 +241,7 @@ The client prints account and user usage after the actions.
 The project uses Vitest and currently includes:
 
 - Five unit tests for quota rules.
-- Six integration tests covering consumption, retries, rejection, authentication, account isolation, plan reductions, and concurrency.
+- Eleven integration tests covering consumption, retries, rejections, authentication, account isolation, custom plan permissions, plan changes, concurrency, request history and pagination, historical usage queries, shared plan updates, and input validation.
 
 ### Run automated tests with Docker (recommended)
 
@@ -252,7 +252,7 @@ docker compose -f compose.test.yaml up --build --abort-on-container-exit --exit-
 This automatically starts:
 - A temporary PostgreSQL test database
 - The test API
-- All 11 automated tests
+- All 16 automated tests
 
 No manual database or test server setup is required.
 
