@@ -721,4 +721,241 @@ it("returns request history with pagination", async () => {
     unitsUsed: 5,
   });
 });
+it("allows querying previous months without changing current usage", async () => {
+  const accountResponse = await fetch(`${BASE_URL}/accounts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Historical Usage Test" }),
+  });
+
+  expect(accountResponse.status).toBe(201);
+  const { apiKey } = await accountResponse.json();
+
+  const headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": apiKey,
+  };
+
+  // Create a user.
+  const userResponse = await fetch(`${BASE_URL}/users`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ externalId: "history-test-user" }),
+  });
+
+  expect(userResponse.status).toBe(201);
+
+  // Consume 5 units in the current month.
+  const consumeResponse = await fetch(`${BASE_URL}/consume`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      externalId: "history-test-user",
+      requestId: "historical-test-001",
+      units: 5,
+    }),
+  });
+
+  expect(consumeResponse.status).toBe(200);
+
+  // Calculate the previous UTC month.
+  const now = new Date();
+  const previousPeriod = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
+  ).toISOString().slice(0, 7);
+
+  // Previous month should have zero usage for this new account.
+  for (const path of [
+    "/usage",
+    "/usage/users/history-test-user",
+  ]) {
+    const response = await fetch(
+      `${BASE_URL}${path}?period=${previousPeriod}`,
+      { headers },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      period: previousPeriod,
+      unitsUsed: 0,
+    });
+  }
+
+  // Current usage must remain unchanged.
+  const currentResponse = await fetch(`${BASE_URL}/usage`, {
+    headers,
+  });
+
+  expect(currentResponse.status).toBe(200);
+  expect(await currentResponse.json()).toMatchObject({
+    unitsUsed: 5,
+  });
+});
+
+it("applies shared plan updates to multiple users", async () => {
+  // Create an account.
+  const accountResponse = await fetch(`${BASE_URL}/accounts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Shared Plan Test" }),
+  });
+
+  expect(accountResponse.status).toBe(201);
+
+  const { apiKey } = (await accountResponse.json()) as {
+    apiKey: string;
+  };
+
+  const headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": apiKey,
+  };
+
+  // Create one custom user plan.
+  const planResponse = await fetch(`${BASE_URL}/plans`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      name: "Shared User Plan",
+      kind: "user",
+      monthlyAllowance: 100,
+      maxPerRequest: 20,
+    }),
+  });
+
+  expect(planResponse.status).toBe(201);
+  const { id: planId } = (await planResponse.json()) as {
+    id: string;
+  };
+
+  // Both users share the same plan.
+  for (const externalId of ["alice", "bob"]) {
+    const userResponse = await fetch(`${BASE_URL}/users`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ externalId, planId }),
+    });
+
+    expect(userResponse.status).toBe(201);
+
+    const response = await fetch(`${BASE_URL}/consume`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        externalId,
+        requestId: `${externalId}-before-update`,
+        units: 15,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      accepted: true,
+    });
+  }
+
+  // Change the shared plan's per-request limit.
+  const updateResponse = await fetch(
+    `${BASE_URL}/plans/${planId}`,
+    {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ maxPerRequest: 10 }),
+    },
+  );
+
+  expect(updateResponse.status).toBe(200);
+
+  // Both users must now follow the updated limit.
+  for (const externalId of ["alice", "bob"]) {
+    const response = await fetch(`${BASE_URL}/consume`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        externalId,
+        requestId: `${externalId}-after-update`,
+        units: 12,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      accepted: false,
+      rejectedScope: "user",
+      rejectedRule: "max_per_request",
+    });
+
+    // Earlier accepted usage must be preserved.
+    const usageResponse = await fetch(
+      `${BASE_URL}/usage/users/${externalId}`,
+      { headers },
+    );
+
+    expect(usageResponse.status).toBe(200);
+    expect(await usageResponse.json()).toMatchObject({
+      maxPerRequest: 10,
+      unitsUsed: 15,
+    });
+  }
+
+  // Both accepted actions count toward account usage.
+  const accountUsageResponse = await fetch(
+    `${BASE_URL}/usage`,
+    { headers },
+  );
+
+  expect(accountUsageResponse.status).toBe(200);
+  expect(await accountUsageResponse.json()).toMatchObject({
+    unitsUsed: 30,
+  });
+});
+
+it("rejects invalid consumption inputs", async () => {
+  const accountResponse = await fetch(`${BASE_URL}/accounts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Validation Test Account" }),
+  });
+
+  expect(accountResponse.status).toBe(201);
+
+  const { apiKey } = (await accountResponse.json()) as {
+    apiKey: string;
+  };
+
+  const headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": apiKey,
+  };
+
+  const invalidRequests = [
+    { externalId: "user-1", requestId: "zero", units: 0 },
+    { externalId: "user-1", requestId: "negative", units: -5 },
+    { externalId: "user-1", requestId: "decimal", units: 2.5 },
+    { externalId: "user-1", requestId: "string", units: "10" },
+    { externalId: "user-1", units: 5 },
+    { requestId: "missing-user", units: 5 },
+  ];
+
+  for (const body of invalidRequests) {
+    const response = await fetch(`${BASE_URL}/consume`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    expect(response.status).toBe(400);
+  }
+
+  // Invalid requests should not be saved in history.
+  const historyResponse = await fetch(`${BASE_URL}/requests`, {
+    headers,
+  });
+
+  expect(historyResponse.status).toBe(200);
+
+  const history = await historyResponse.json();
+  expect(history.items).toHaveLength(0);
+});
+
 });
